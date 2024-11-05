@@ -47,7 +47,10 @@ namespace Ext
 		PxPrismaticJointFlags	jointFlags;
 
 	private:
-		PrismaticJointData(const PxJointLinearLimitPair& pair) : limit(pair)	{}
+		PrismaticJointData(const PxJointLinearLimitPair& pair) : limit(pair)	{
+			int q = 0;
+			PX_UNUSED(q);
+		}
 	};
 
     typedef JointT<PxPrismaticJoint, PrismaticJointData, PxPrismaticJointGeneratedValues> PrismaticJointT;

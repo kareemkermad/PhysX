@@ -30,6 +30,7 @@
 #define PULLEY_JOINT_H
 
 #include "PxPhysicsAPI.h"
+#include "ExtConstraintHelper.h"
 
 // a pulley joint constrains two actors such that the sum of their distances from their respective anchor points at their attachment points 
 // is a fixed value (the parameter 'distance'). Only dynamic actors are supported.
@@ -42,6 +43,20 @@
 //
 // The above equation results in a singularity when the anchor point is coincident with the attachment point; for simplicity
 // the constraint does not attempt to handle this case robustly.
+
+namespace physx
+{
+	struct PxPathJointFlag
+	{
+		enum Enum
+		{
+			eLIMIT_ENABLED = 1 << 1
+		};
+	};
+
+	typedef PxFlags<PxPathJointFlag::Enum, PxU16> PxPathJointFlags;
+	PX_FLAGS_OPERATORS(PxPathJointFlag::Enum, PxU16)
+}
 
 class PulleyJoint : public physx::PxConstraintConnector
 {
@@ -57,17 +72,17 @@ public:
 
 	// attribute accessor and mutators
 
-	void			setAttachment0(const physx::PxVec3& pos);
-	physx::PxVec3	getAttachment0() const;
+	//void			setAttachment0(const physx::PxVec3& pos);
+	//physx::PxVec3	getAttachment0() const;
 
-	void			setAttachment1(const physx::PxVec3& pos);
-	physx::PxVec3	getAttachment1() const;
+	//void			setAttachment1(const physx::PxVec3& pos);
+	//physx::PxVec3	getAttachment1() const;
 
-	void			setDistance(physx::PxReal totalDistance);
-	physx::PxReal	getDistance() const;
+	//void			setDistance(physx::PxReal totalDistance);
+	//physx::PxReal	getDistance() const;
 	
-	void			setRatio(physx::PxReal ratio);
-	physx::PxReal	getRatio() const;
+	//void			setRatio(physx::PxReal ratio);
+	//physx::PxReal	getRatio() const;
 
 	// PxConstraintConnector boilerplate
 
@@ -87,6 +102,7 @@ public:
 
 	virtual const void* getConstantBlock() const { return &mData; }
 
+	/*
 	struct PulleyJointData
 	{
 		physx::PxTransform c2b[2];
@@ -98,12 +114,22 @@ public:
 		physx::PxReal ratio;
 		physx::PxReal tolerance;
 	};
+	*/
+
+	struct PathJointData : physx::Ext::JointData
+	{
+		physx::PxVec3 attachment0;
+		physx::PxVec3 attachment1;
+		physx::PxJointLinearLimitPair limit;
+		physx::PxPathJointFlags jointFlags;
+		PathJointData(const physx::PxJointLinearLimitPair& pair) : limit(pair) {}
+	};
 
 	physx::PxRigidBody*		mBody[2];
 	physx::PxTransform		mLocalPose[2];
 
 	physx::PxConstraint*	mConstraint;
-	PulleyJointData			mData;
+	PathJointData			mData;
 
 	~PulleyJoint() {}
 };

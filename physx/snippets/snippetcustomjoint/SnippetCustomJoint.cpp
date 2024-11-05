@@ -74,7 +74,7 @@ void initPhysics(bool /*interactive*/)
 		pvdClient->setScenePvdFlag(PxPvdSceneFlag::eTRANSMIT_SCENEQUERIES, true);
 	}
 
-	gMaterial = gPhysics->createMaterial(0.5f, 0.5f, 0.6f);
+	gMaterial = gPhysics->createMaterial(0.6f, 0.6f, 0.6f);
 
 	PxRigidStatic* groundPlane = PxCreatePlane(*gPhysics, PxPlane(0,1,0,0), *gMaterial);
 	gScene->addActor(*groundPlane);
@@ -82,13 +82,21 @@ void initPhysics(bool /*interactive*/)
 	// two boxes connected by the pulley, one twice the density of the other
 
 	PxBoxGeometry boxGeom(1.0f, 1.0f, 1.0f);
-	PxRigidDynamic* box0 = PxCreateDynamic(*gPhysics, PxTransform(PxVec3(5,5,0)), boxGeom, *gMaterial, 1.0f);
-	PxRigidDynamic* box1 = PxCreateDynamic(*gPhysics, PxTransform(PxVec3(0,5,0)), boxGeom, *gMaterial, 2.0f); 
 
-	PulleyJoint* joint = new PulleyJoint(*gPhysics, *box0, PxTransform(PxVec3(0.0f,1.0f,0.0f)), PxVec3(5.0f,10.0f,0.0f),
-												    *box1, PxTransform(PxVec3(0.0f,1.0f,0.0f)), PxVec3(0.0f,10.0f,0.0f));
+	PxTransform t0(PxVec3(-2, 10, 0), PxQuat(0.0f, 0.0f, -0.130526f, 0.991444f));
+	PxTransform t1(PxVec3(2, 10, 0), PxQuat(0.0f, 0.0f, 0.258819f, 0.9659258f));
+	PxRigidDynamic* box0 = PxCreateDynamic(*gPhysics, t0, boxGeom, *gMaterial, 1.0f);
+	PxRigidDynamic* box1 = PxCreateDynamic(*gPhysics, t1, boxGeom, *gMaterial, 1.0f);
 
-	joint->setDistance(8.0f);
+	box0->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
+
+	//physx::PxPrismaticJointCreate(*gPhysics, box0, PxTransform(PxIdentity), box1, PxTransform(PxIdentity));
+
+	PulleyJoint* joint = new PulleyJoint(*gPhysics, *box0, PxTransform(PxIdentity), PxVec3(0.0f,0.0f,0.0f),
+												    *box1, PxTransform(PxVec3(0.0f, 0.5f, 0.0f)), PxVec3(0.0f,0.0f,0.0f));
+	PX_UNUSED(joint);
+
+	//joint->setDistance(8.0f);
 
 	gScene->addActor(*box0);
 	gScene->addActor(*box1);
