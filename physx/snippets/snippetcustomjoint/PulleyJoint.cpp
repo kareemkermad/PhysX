@@ -27,16 +27,10 @@
 // Copyright (c) 2001-2004 NovodeX AG. All rights reserved.  
 
 #include "PulleyJoint.h"
-#include <assert.h>
 #include "PxConstraint.h"
+#include <assert.h>
 
 using namespace physx;
-
-struct circle {
-	PxVec3 center;
-	PxVec3 normal;
-	float radius;
-};
 
 //TAG:solverprepshader
 static PxU32 solverPrep(Px1DConstraint* constraints,
@@ -52,67 +46,35 @@ static PxU32 solverPrep(Px1DConstraint* constraints,
 	PX_UNUSED(maxConstraints);
 
 	const PulleyJoint::PathJointData& data = *reinterpret_cast<const PulleyJoint::PathJointData*>(constantBlock);
+	const curve* path = data.path;
 
 	PxTransform32 cA2w, cB2w;
 	physx::Ext::joint::ConstraintHelper ch(constraints, invMassScale, cA2w, cB2w, body0WorldOffset, data, bA2w, bB2w);
 
 	physx::Ext::joint::applyNeighborhoodOperator(cA2w, cB2w);
 
+	PxVec3 local_anchor_b = bA2w.transformInv(cB2w.p);
+	const float s = path->projected_length(local_anchor_b);
+	path->frame(s, cA2w);
+	assert(cA2w.isSane());
+	cA2w = bA2w.transform(cA2w);
+
 	const PxVec3 bOriginInA = cA2w.transformInv(cB2w.p);
 
+	const PxU32 angle_constraints = PxU32(data.joint_flags & (PxPathJointFlag::eTANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eNORMAL_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eBITANGENT_ANGLE_CONSTRAINT_ENABLED)) >> 3;
+
 	PxVec3 ra, rb, axis;
-	ch.prepareLockedAxes(cA2w.q, cB2w.q, bOriginInA, 6ul, 0ul, ra, rb, &axis);
+	ch.prepareLockedAxes(cA2w.q, cB2w.q, bOriginInA, 6ul, angle_constraints, ra, rb, &axis);
 	cA2wOut = ra + bA2w.p;
 	cB2wOut = rb + bB2w.p;
 
+	if ((data.joint_flags & PxPathJointFlag::eDRIVE_ENABLED) == PxPathJointFlag::eDRIVE_ENABLED)
+	{
+		const float drive_position_error = data.drive_position - s;
+		ch.linear(axis, data.drive_velocity, drive_position_error, data.drive_settings);
+	}
+
 	return ch.getCount();
-
-	/*
-	const PulleyJoint::PulleyJointData& data = *reinterpret_cast<const PulleyJoint::PulleyJointData*>(constantBlock);
-
-	PxTransform cA2w = bA2w.transform(data.c2b[0]);
-	PxTransform cB2w = bB2w.transform(data.c2b[1]);
-
-	cA2wOut = cA2w.p;
-	cB2wOut = cB2w.p;
-
-	body0WorldOffset = cB2w.p - bA2w.p;
-
-	PxVec3 directionA = data.attachment0 - cA2w.p;
-	PxReal distanceA = directionA.normalize();
-
-	PxVec3 directionB = data.attachment1 - cB2w.p;
-	PxReal distanceB = directionB.normalize();
-
-	directionB *= data.ratio;
-
-	PxReal totalDistance = distanceA + distanceB;
-
-	// compute geometric error:
-	PxReal geometricError = (data.distance - totalDistance); 
-
-	Px1DConstraint *c = constraints;
-	// constraint is breakable, so we need to output forces
-	c->flags = Px1DConstraintFlag::eOUTPUT_FORCE;
-
-	if (geometricError < 0.0f) 
-	{
-		c->maxImpulse = PX_MAX_F32;
-		c->minImpulse = 0;
-		c->geometricError = geometricError; 
-	}
-	else if(geometricError > 0.0f)
-	{
-		c->maxImpulse = 0;
-		c->minImpulse = -PX_MAX_F32;
-		c->geometricError = geometricError; 
-	}
-
-	c->linear0 = directionA;	c->angular0 = (cA2w.p - bA2w.p).cross(c->linear0);		
-	c->linear1 = -directionB;	c->angular1 = (cB2w.p - bB2w.p).cross(c->linear1);		
-
-	return 1;
-	*/
 }
 
 static void visualize(PxConstraintVisualizer& viz,
@@ -127,110 +89,42 @@ static void visualize(PxConstraintVisualizer& viz,
 	PxTransform cA2w = body0Transform * data.c2b[0];
 	PxTransform cB2w = body1Transform * data.c2b[1];
 	viz.visualizeJointFrames(cA2w, cB2w);
-	viz.visualizeJointFrames(PxTransform(data.attachment0), PxTransform(data.attachment1));
-
-	/*
-	const PulleyJoint::PulleyJointData& data = *reinterpret_cast<const PulleyJoint::PulleyJointData*>(constantBlock);
-
-	PxTransform cA2w = body0Transform * data.c2b[0];
-	PxTransform cB2w = body1Transform * data.c2b[1];
-	viz.visualizeJointFrames(cA2w, cB2w);
-	viz.visualizeJointFrames(PxTransform(data.attachment0), PxTransform(data.attachment1));
-	*/
+	viz.visualizeJointFrames(PxTransform(PxIdentity), PxTransform(PxIdentity));
 }
 
 static PxConstraintShaderTable sShaderTable = { solverPrep, visualize, PxConstraintFlag::Enum(0) };
 
 PxConstraintSolverPrep PulleyJoint::getPrep() const { return solverPrep; }
 
-PulleyJoint::PulleyJoint(PxPhysics& physics, PxRigidBody& body0, const PxTransform& localFrame0, const PxVec3& attachment0,
-											 PxRigidBody& body1, const PxTransform& localFrame1, const PxVec3& attachment1)
-: mData(PathJointData(PxJointLinearLimitPair(PxTolerancesScale())))
+PulleyJoint::PulleyJoint(PxPhysics& physics, const physx::curve* path, PxRigidBody& body0, const PxTransform& localFrame0, PxRigidBody& body1, const PxTransform& localFrame1)
+: m_data(path, PxJointLinearLimitPair(PxTolerancesScale()))
 {
-	mConstraint = physics.createConstraint(&body0, &body1, *this, sShaderTable, sizeof(PathJointData));
+	m_constraint = physics.createConstraint(&body0, &body1, *this, sShaderTable, sizeof(PathJointData));
 
-	mBody[0] = &body0;
-	mBody[1] = &body1;
+	m_bodies[0] = &body0;
+	m_bodies[1] = &body1;
 
 	// keep these around in case the CoM gets relocated
-	mLocalPose[0] = localFrame0.getNormalized();
-	mLocalPose[1] = localFrame1.getNormalized();
-
-	mData = PathJointData(PxJointLinearLimitPair(PxTolerancesScale()));
-	mData.limit = PxJointLinearLimitPair(PxTolerancesScale());
-	mData.jointFlags = PxPathJointFlags();
+	m_local_poses[0] = localFrame0.getNormalized();
+	m_local_poses[1] = localFrame1.getNormalized();
 
 	// the data which will be fed to the joint solver and projection shaders
-	mData.attachment0 = attachment0;
-	mData.attachment1 = attachment1;
-	//mData.distance = 1.0f;
-	//mData.ratio = 1.0f;
-	mData.invMassScale.linear0 = 1.0f;
-	mData.invMassScale.angular0 = 1.0f;
-	mData.invMassScale.linear1 = 1.0f;
-	mData.invMassScale.angular1 = 1.0f;
-	mData.c2b[0] = body0.getCMassLocalPose().transformInv(mLocalPose[0]);
-	mData.c2b[1] = body1.getCMassLocalPose().transformInv(mLocalPose[1]);
+	m_data.invMassScale.linear0 = 1.0f;
+	m_data.invMassScale.angular0 = 1.0f;
+	m_data.invMassScale.linear1 = 1.0f;
+	m_data.invMassScale.angular1 = 1.0f;
+	m_data.c2b[0] = body0.getCMassLocalPose().transformInv(m_local_poses[0]);
+	m_data.c2b[1] = body1.getCMassLocalPose().transformInv(m_local_poses[1]);
 }
 
 void PulleyJoint::release()
 {
-	mConstraint->release();
+	m_constraint->release();
 }
-
-///////////////////////////////////////////// attribute accessors and mutators
-
-/*
-void PulleyJoint::setAttachment0(const PxVec3& pos)
-{
-	mData.attachment0 = pos;
-	mConstraint->markDirty();
-}
-
-PxVec3 PulleyJoint::getAttachment0() const
-{
-	return mData.attachment0;
-}
-
-void PulleyJoint::setAttachment1(const PxVec3& pos)
-{
-	mData.attachment1 = pos;
-	mConstraint->markDirty();
-}
-
-PxVec3 PulleyJoint::getAttachment1() const
-{
-	return mData.attachment1;
-}
-
-void PulleyJoint::setDistance(float totalDistance)
-{
-	mData.distance = totalDistance;
-	mConstraint->markDirty();
-}
-
-float PulleyJoint::getDistance() const
-{
-	return mData.distance;
-}
-	
-void PulleyJoint::setRatio(float ratio)
-{
-	mData.ratio = ratio;
-	mConstraint->markDirty();
-}
-
-float PulleyJoint::getRatio() const
-{
-	return mData.ratio;
-}
-*/
-
-///////////////////////////////////////////// PxConstraintConnector methods
 
 void* PulleyJoint::prepareData()
 {
-	return &mData;
+	return &m_data;
 }
 
 void PulleyJoint::onConstraintRelease()
@@ -240,14 +134,13 @@ void PulleyJoint::onConstraintRelease()
 
 void PulleyJoint::onComShift(PxU32 actor)
 {
-	mData.c2b[actor] = mBody[actor]->getCMassLocalPose().transformInv(mLocalPose[actor]); 
-	mConstraint->markDirty();
+	m_data.c2b[actor] = m_bodies[actor]->getCMassLocalPose().transformInv(m_local_poses[actor]); 
+	m_constraint->markDirty();
 }
 
 void PulleyJoint::onOriginShift(const PxVec3& shift)
 {
-	mData.attachment0 -= shift;
-	mData.attachment1 -= shift;
+	PX_UNUSED(shift);
 }
 
 void* PulleyJoint::getExternalReference(PxU32& typeID)

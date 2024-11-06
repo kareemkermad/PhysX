@@ -85,18 +85,22 @@ void initPhysics(bool /*interactive*/)
 
 	PxTransform t0(PxVec3(-2, 10, 0), PxQuat(0.0f, 0.0f, -0.130526f, 0.991444f));
 	PxTransform t1(PxVec3(2, 10, 0), PxQuat(0.0f, 0.0f, 0.258819f, 0.9659258f));
-	PxRigidDynamic* box0 = PxCreateDynamic(*gPhysics, t0, boxGeom, *gMaterial, 1.0f);
+	PxRigidDynamic* box0 = PxCreateDynamic(*gPhysics, t0, boxGeom, *gMaterial, 100.0f);
 	PxRigidDynamic* box1 = PxCreateDynamic(*gPhysics, t1, boxGeom, *gMaterial, 1.0f);
 
-	box0->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
+	//box0->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
 
-	//physx::PxPrismaticJointCreate(*gPhysics, box0, PxTransform(PxIdentity), box1, PxTransform(PxIdentity));
+	physx::PxPrismaticJointCreate(*gPhysics, box0, PxTransform(PxIdentity), NULL, t0);
 
-	PulleyJoint* joint = new PulleyJoint(*gPhysics, *box0, PxTransform(PxIdentity), PxVec3(0.0f,0.0f,0.0f),
-												    *box1, PxTransform(PxVec3(0.0f, 0.5f, 0.0f)), PxVec3(0.0f,0.0f,0.0f));
+	const plane plane(PxVec3(0.0f, 0.0f, 0.0f), PxVec3(1.0f, 0.0f, 0.0f), PxVec3(0.0f, 1.0f, 0.0f), PxVec3(0.0f, 0.0f, 1.0f));
+	const circle* path = new circle(plane, sqrtf(36.0f));
+
+	PulleyJoint* joint = new PulleyJoint(*gPhysics, path, *box0, PxTransform(PxIdentity), *box1, PxTransform(PxVec3(0.0f, 0.5f, 0.0f)));
+	joint->setFlags(PxPathJointFlag::eTANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eNORMAL_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eBITANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eDRIVE_ENABLED);
+	joint->setDriveSettings(PxD6JointDrive(0.0f, 1000.0f, 1000.0f));
+	joint->setDrivePosition(0);
+	joint->setDriveVelocity(5.0f);
 	PX_UNUSED(joint);
-
-	//joint->setDistance(8.0f);
 
 	gScene->addActor(*box0);
 	gScene->addActor(*box1);
