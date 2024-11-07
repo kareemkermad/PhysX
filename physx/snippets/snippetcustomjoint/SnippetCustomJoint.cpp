@@ -76,8 +76,8 @@ void initPhysics(bool /*interactive*/)
 
 	gMaterial = gPhysics->createMaterial(0.6f, 0.6f, 0.6f);
 
-	//PxRigidStatic* groundPlane = PxCreatePlane(*gPhysics, PxPlane(0,1,0,0), *gMaterial);
-	//gScene->addActor(*groundPlane);
+	PxRigidStatic* groundPlane = PxCreatePlane(*gPhysics, PxPlane(0,1,0,0), *gMaterial);
+	gScene->addActor(*groundPlane);
 
 	// two boxes connected by the pulley, one twice the density of the other
 
@@ -88,20 +88,22 @@ void initPhysics(bool /*interactive*/)
 	PxRigidDynamic* box0 = PxCreateDynamic(*gPhysics, t0, boxGeom, *gMaterial, 100.0f);
 	PxRigidDynamic* box1 = PxCreateDynamic(*gPhysics, t1, boxGeom, *gMaterial, 1.0f);
 
-	//box0->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
+	box0->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
 
-	physx::PxPrismaticJointCreate(*gPhysics, box0, PxTransform(PxIdentity), NULL, t0);
+	//physx::PxPrismaticJointCreate(*gPhysics, box0, PxTransform(PxIdentity), NULL, t0);
 
 	const plane plane(PxVec3(0.0f, 0.0f, 0.0f), PxVec3(1.0f, 0.0f, 0.0f), PxVec3(0.0f, 1.0f, 0.0f), PxVec3(0.0f, 0.0f, 1.0f));
 	const float radius = sqrtf(20.0f);
 	circle* path = new circle(plane, radius);
 
+	//const line* path = new line(PxVec3(0.0F, 0.0F, 0.0F), PxVec3(1.0F, 0.0, 0.0F), PxVec3(0.0F, 1.0F, 0.0F), 20.0F);
+
 	PulleyJoint* joint = new PulleyJoint(*gPhysics, path, *box0, PxTransform(PxIdentity), *box1, PxTransform(PxVec3(0.0f, 0.5f, 0.0f)));
 	joint->setFlags(PxPathJointFlag::eTANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eNORMAL_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eBITANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eDRIVE_ENABLED | PxPathJointFlag::eLIMIT_ENABLED);
-	joint->setLimit(-1000.0f, PxTwoPi * radius * 2.0f);
-	joint->setDriveSettings(PxD6JointDrive(0.0f, 1000.0f, 1000.0f));
+	joint->setLimit(0.0F, PxTwoPi * radius * 1.0F);
+	joint->setDriveSettings(PxD6JointDrive(0.0f, 10000.0f, 1000.0f));
 	//joint->setDrivePosition(-PxTwoPi * radius * 0.25F);
-	joint->setDriveVelocity(5.0f);
+	joint->setDriveVelocity(10.0f);
 	PX_UNUSED(joint);
 
 	gScene->addActor(*box0);
@@ -110,7 +112,7 @@ void initPhysics(bool /*interactive*/)
 
 void stepPhysics(bool /*interactive*/)
 {
-	gScene->simulate(1.0f/60.0f);
+	gScene->simulate(1.0f/100.0f);
 	gScene->fetchResults(true);
 }
 	

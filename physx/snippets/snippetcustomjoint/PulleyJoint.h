@@ -186,6 +186,7 @@ namespace physx
     {
     public:
         virtual float length() const = 0;
+        virtual bool closed() const = 0;
         virtual float projected_length(const PxVec3& point) const = 0;
         virtual void frame(float s, PxTransform& result) const = 0;
 
@@ -200,51 +201,25 @@ namespace physx
             else if (ds < -hl) { ds += l; }
             return s0 + ds;
         }
-    };
 
-    class circle : public curve
-    {
-    public:
-        inline circle(plane plane, float radius)
-        : m_plane(plane),
-          m_radius(radius)
+    protected:
+        static void quat(const PxVec3& ax, const PxVec3& ay, const PxVec3& az, PxQuat& q)
         {
-            // Nothing to do.
-        }
-
-    public:
-        // The circumference.
-        inline float length() const
-        {
-            return m_radius * PxTwoPi;
-        }
-
-        // Evaluates the frame on the circle at the specified arc-length.
-        inline void frame(float s, PxTransform& result) const
-        {
-            PxVec3 position = this->point(s);
-            PxVec3 tangent = this->tangent(s);
-            PxVec3 normal = this->normal(s);
-            PxVec3 bitangent = tangent.cross(normal);
-
-            PxQuat& q = result.q;
-            result.p = position;
-
-            float m0 = tangent.x;
-            float m1 = tangent.y;
-            float m2 = tangent.z;
-            float m4 = normal.x;
-            float m5 = normal.y;
-            float m6 = normal.z;
-            float m8 = bitangent.x;
-            float m9 = bitangent.y;
-            float m10 = bitangent.z;
+            float m0 = ax.x;
+            float m1 = ax.y;
+            float m2 = ax.z;
+            float m4 = ay.x;
+            float m5 = ay.y;
+            float m6 = ay.z;
+            float m8 = az.x;
+            float m9 = az.y;
+            float m10 = az.z;
 
             // Remove the scale from the matrix
             float lx = m0 * m0 + m1 * m1 + m2 * m2;
             float ly = m4 * m4 + m5 * m5 + m6 * m6;
             float lz = m8 * m8 + m9 * m9 + m10 * m10;
-            if (lx <= 0.0F || ly <= 0.0F || lz <= 0.0F) { result = PxTransform(PxIdentity); }
+            if (lx <= 0.0F || ly <= 0.0F || lz <= 0.0F) { q = PxQuat(PxIdentity); return; }
             lx = 1.0F / sqrtf(lx);
             ly = 1.0F / sqrtf(ly);
             lz = 1.0F / sqrtf(lz);
@@ -293,6 +268,81 @@ namespace physx
                 q.z = 0.5F * S;
                 q.w = (m1 - m4) * invs;
             }
+        }
+    };
+
+    class line : public curve
+    {
+    public:
+        inline line(const PxVec3& start, const PxVec3& direction, const PxVec3& normal, float length)
+        : m_start(start),
+          m_direction(direction),
+          m_normal(normal),
+          m_length(length)
+        {
+            // Nothing to do.
+        }
+
+        inline float length() const
+        {
+            return m_length;
+        }
+
+        inline bool closed() const
+        {
+            return false;
+        }
+
+        inline float projected_length(const PxVec3& point) const
+        {
+            const PxVec3 v = point - m_start;
+            return fmaxf(0.0F, fminf(m_length, v.dot(m_direction)));
+        }
+
+        inline void frame(float s, PxTransform& result) const
+        {
+            result.p = m_start + m_direction * s;
+            curve::quat(m_direction, m_normal, m_direction.cross(m_normal), result.q);
+        }
+
+    private:
+        PxVec3 m_start;
+        PxVec3 m_direction;
+        PxVec3 m_normal;
+        float m_length;
+    };
+
+    class circle : public curve
+    {
+    public:
+        inline circle(const plane& plane, float radius)
+        : m_plane(plane),
+          m_radius(radius)
+        {
+            // Nothing to do.
+        }
+
+    public:
+        // The circumference.
+        inline float length() const
+        {
+            return m_radius * PxTwoPi;
+        }
+
+        inline bool closed() const
+        {
+            return true;
+        }
+
+        // Evaluates the frame on the circle at the specified arc-length.
+        inline void frame(float s, PxTransform& result) const
+        {
+            const PxVec3 position = this->point(s);
+            const PxVec3 tangent = this->tangent(s);
+            const PxVec3 normal = this->normal(s);
+            const PxVec3 bitangent = tangent.cross(normal);
+            result.p = this->point(s);
+            curve::quat(tangent, normal, bitangent, result.q);
         }
 
         // Evaluates the point on the circle at the specified arc-length.

@@ -47,6 +47,7 @@ static PxU32 solverPrep(Px1DConstraint* constraints,
 
 	PulleyJoint::PathJointData& data = *const_cast<PulleyJoint::PathJointData*>(reinterpret_cast<const PulleyJoint::PathJointData*>(constantBlock));
 	const curve* path = data.path;
+	const bool closed = path->closed();
 
 	PxTransform32 cA2w, cB2w;
 	physx::Ext::joint::ConstraintHelper ch(constraints, invMassScale, cA2w, cB2w, body0WorldOffset, data, bA2w, bB2w);
@@ -54,15 +55,36 @@ static PxU32 solverPrep(Px1DConstraint* constraints,
 	physx::Ext::joint::applyNeighborhoodOperator(cA2w, cB2w);
 
 	PxVec3 local_anchor_b = bA2w.transformInv(cB2w.p);
-	const float s = path->normalize(data.position, path->projected_length(local_anchor_b));
+	float s = path->projected_length(local_anchor_b);	
+	if (closed)
+	{
+		s = path->normalize(data.position, s);
+	}
+
 	data.position = s;
 	path->frame(s, cA2w);
 	cA2w = bA2w.transform(cA2w);
 
-	const bool limitEnabled = data.joint_flags & PxPathJointFlag::eLIMIT_ENABLED;
+	bool limitEnabled = data.joint_flags & PxPathJointFlag::eLIMIT_ENABLED;
 	const PxJointLinearLimitPair& limit = data.limit;
-	const float upper = limit.upper + data.zero_position;
-	const float lower = limit.lower + data.zero_position;
+	float upper = limit.upper + data.zero_position; // Map limits to the interval [0, L]
+	float lower = limit.lower + data.zero_position;
+
+	if (closed == false)
+	{
+		if (limitEnabled)
+		{
+			upper = fminf(upper, path->length());
+			lower = fmaxf(lower, 0.0F);
+		}
+		else
+		{
+			upper = path->length();
+			lower = 0.0F;
+			limitEnabled = true;
+		}
+	}
+
 	const bool limitIsLocked = limitEnabled && lower >= upper;
 
 	const PxVec3 bOriginInA = cA2w.transformInv(cB2w.p);
@@ -74,17 +96,16 @@ static PxU32 solverPrep(Px1DConstraint* constraints,
 	cA2wOut = ra + bA2w.p;
 	cB2wOut = rb + bB2w.p;
 
-	if (limitEnabled && !limitIsLocked)
-	{
-		const PxReal ordinate = s;
-		ch.linearLimit(axis, ordinate, upper, limit);
-		ch.linearLimit(-axis, -ordinate, -lower, limit);
-	}
-
 	if ((data.joint_flags & PxPathJointFlag::eDRIVE_ENABLED) == PxPathJointFlag::eDRIVE_ENABLED)
 	{
 		const float drive_position_error = (data.drive_position + data.zero_position) - s;
 		ch.linear(axis, -data.drive_velocity, drive_position_error, data.drive_settings);
+	}
+
+	if (limitEnabled && !limitIsLocked)
+	{
+		ch.linearLimit(axis, s, upper, limit);
+		ch.linearLimit(-axis, -s, -lower, limit);
 	}
 
 	return ch.getCount();
