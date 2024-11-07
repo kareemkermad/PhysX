@@ -185,8 +185,21 @@ namespace physx
     class curve
     {
     public:
+        virtual float length() const = 0;
         virtual float projected_length(const PxVec3& point) const = 0;
         virtual void frame(float s, PxTransform& result) const = 0;
+
+        float normalize(float s0, float s1) const
+        {
+            const float l = length();
+            const float hl = l * 0.5F;
+            const float k0 = floorf(s0 / l);
+            s1 += k0 * l;
+            float ds = s1 - s0;
+            if (ds > hl) { ds -= l; }
+            else if (ds < -hl) { ds += l; }
+            return s0 + ds;
+        }
     };
 
     class circle : public curve
@@ -364,6 +377,8 @@ public:
         physx::PxD6JointDrive drive_settings;
         float drive_position;
         float drive_velocity;
+        float zero_position;
+        float position;
 		physx::PxJointLinearLimitPair limit;
 		physx::PxPathJointFlags joint_flags;
 
@@ -372,6 +387,8 @@ public:
           drive_settings(),
           drive_position(0),
           drive_velocity(0),
+          zero_position(0),
+          position(0),
           limit(pair),
           joint_flags(0)
         {
@@ -381,32 +398,18 @@ public:
 
 	static const physx::PxU32 TYPE_ID = physx::PxConcreteType::eFIRST_USER_EXTENSION;
 
-	PulleyJoint(physx::PxPhysics& physics, const physx::curve* path, 
+	PulleyJoint(physx::PxPhysics& physics, const physx::curve* path,
 				physx::PxRigidBody& body0, const physx::PxTransform& localFrame0,
 			    physx::PxRigidBody& body1, const physx::PxTransform& localFrame1);
 
 	void release();
 
-	// attribute accessor and mutators
-
-	//void			setAttachment0(const physx::PxVec3& pos);
-	//physx::PxVec3	getAttachment0() const;
-
-	//void			setAttachment1(const physx::PxVec3& pos);
-	//physx::PxVec3	getAttachment1() const;
-
-	//void			setDistance(physx::PxReal totalDistance);
-	//physx::PxReal	getDistance() const;
-	
-	//void			setRatio(physx::PxReal ratio);
-	//physx::PxReal	getRatio() const;
-
-	// PxConstraintConnector boilerplate
-
     void            setFlags(physx::PxPathJointFlags flags) { m_data.joint_flags = flags; }
+    void            setLimit(float lower, float upper) { m_data.limit.lower = physx::PxReal(lower); m_data.limit.upper = physx::PxReal(upper); }
     void            setDrivePosition(float position) { m_data.drive_position = position; }
     void            setDriveVelocity(float velocity) { m_data.drive_velocity = velocity; }
     void            setDriveSettings(const physx::PxD6JointDrive& settings) { m_data.drive_settings = settings; }
+    float           getCurrentPosition() { return m_data.position + m_data.zero_position; }
 
 	void*			prepareData();
 	void			onConstraintRelease();

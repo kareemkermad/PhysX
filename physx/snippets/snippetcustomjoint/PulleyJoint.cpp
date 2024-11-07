@@ -45,7 +45,7 @@ static PxU32 solverPrep(Px1DConstraint* constraints,
 {		
 	PX_UNUSED(maxConstraints);
 
-	const PulleyJoint::PathJointData& data = *reinterpret_cast<const PulleyJoint::PathJointData*>(constantBlock);
+	PulleyJoint::PathJointData& data = *const_cast<PulleyJoint::PathJointData*>(reinterpret_cast<const PulleyJoint::PathJointData*>(constantBlock));
 	const curve* path = data.path;
 
 	PxTransform32 cA2w, cB2w;
@@ -54,24 +54,37 @@ static PxU32 solverPrep(Px1DConstraint* constraints,
 	physx::Ext::joint::applyNeighborhoodOperator(cA2w, cB2w);
 
 	PxVec3 local_anchor_b = bA2w.transformInv(cB2w.p);
-	const float s = path->projected_length(local_anchor_b);
+	const float s = path->normalize(data.position, path->projected_length(local_anchor_b));
+	data.position = s;
 	path->frame(s, cA2w);
-	assert(cA2w.isSane());
 	cA2w = bA2w.transform(cA2w);
+
+	const bool limitEnabled = data.joint_flags & PxPathJointFlag::eLIMIT_ENABLED;
+	const PxJointLinearLimitPair& limit = data.limit;
+	const float upper = limit.upper + data.zero_position;
+	const float lower = limit.lower + data.zero_position;
+	const bool limitIsLocked = limitEnabled && lower >= upper;
 
 	const PxVec3 bOriginInA = cA2w.transformInv(cB2w.p);
 
 	const PxU32 angle_constraints = PxU32(data.joint_flags & (PxPathJointFlag::eTANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eNORMAL_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eBITANGENT_ANGLE_CONSTRAINT_ENABLED)) >> 3;
 
 	PxVec3 ra, rb, axis;
-	ch.prepareLockedAxes(cA2w.q, cB2w.q, bOriginInA, 6ul, angle_constraints, ra, rb, &axis);
+	ch.prepareLockedAxes(cA2w.q, cB2w.q, bOriginInA, limitIsLocked ? 7ul : 6ul, angle_constraints, ra, rb, &axis);
 	cA2wOut = ra + bA2w.p;
 	cB2wOut = rb + bB2w.p;
 
+	if (limitEnabled && !limitIsLocked)
+	{
+		const PxReal ordinate = s;
+		ch.linearLimit(axis, ordinate, upper, limit);
+		ch.linearLimit(-axis, -ordinate, -lower, limit);
+	}
+
 	if ((data.joint_flags & PxPathJointFlag::eDRIVE_ENABLED) == PxPathJointFlag::eDRIVE_ENABLED)
 	{
-		const float drive_position_error = data.drive_position - s;
-		ch.linear(axis, data.drive_velocity, drive_position_error, data.drive_settings);
+		const float drive_position_error = (data.drive_position + data.zero_position) - s;
+		ch.linear(axis, -data.drive_velocity, drive_position_error, data.drive_settings);
 	}
 
 	return ch.getCount();
@@ -109,6 +122,9 @@ PulleyJoint::PulleyJoint(PxPhysics& physics, const physx::curve* path, PxRigidBo
 	m_local_poses[1] = localFrame1.getNormalized();
 
 	// the data which will be fed to the joint solver and projection shaders
+	const PxVec3 world_anchor = body1.getGlobalPose().transform(localFrame1.p);
+	const PxVec3 local_anchor = body0.getGlobalPose().transformInv(world_anchor);
+	m_data.zero_position = path->projected_length(local_anchor);
 	m_data.invMassScale.linear0 = 1.0f;
 	m_data.invMassScale.angular0 = 1.0f;
 	m_data.invMassScale.linear1 = 1.0f;

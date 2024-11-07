@@ -76,8 +76,8 @@ void initPhysics(bool /*interactive*/)
 
 	gMaterial = gPhysics->createMaterial(0.6f, 0.6f, 0.6f);
 
-	PxRigidStatic* groundPlane = PxCreatePlane(*gPhysics, PxPlane(0,1,0,0), *gMaterial);
-	gScene->addActor(*groundPlane);
+	//PxRigidStatic* groundPlane = PxCreatePlane(*gPhysics, PxPlane(0,1,0,0), *gMaterial);
+	//gScene->addActor(*groundPlane);
 
 	// two boxes connected by the pulley, one twice the density of the other
 
@@ -93,12 +93,14 @@ void initPhysics(bool /*interactive*/)
 	physx::PxPrismaticJointCreate(*gPhysics, box0, PxTransform(PxIdentity), NULL, t0);
 
 	const plane plane(PxVec3(0.0f, 0.0f, 0.0f), PxVec3(1.0f, 0.0f, 0.0f), PxVec3(0.0f, 1.0f, 0.0f), PxVec3(0.0f, 0.0f, 1.0f));
-	const circle* path = new circle(plane, sqrtf(36.0f));
+	const float radius = sqrtf(20.0f);
+	circle* path = new circle(plane, radius);
 
 	PulleyJoint* joint = new PulleyJoint(*gPhysics, path, *box0, PxTransform(PxIdentity), *box1, PxTransform(PxVec3(0.0f, 0.5f, 0.0f)));
-	joint->setFlags(PxPathJointFlag::eTANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eNORMAL_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eBITANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eDRIVE_ENABLED);
+	joint->setFlags(PxPathJointFlag::eTANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eNORMAL_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eBITANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eDRIVE_ENABLED | PxPathJointFlag::eLIMIT_ENABLED);
+	joint->setLimit(-1000.0f, PxTwoPi * radius * 2.0f);
 	joint->setDriveSettings(PxD6JointDrive(0.0f, 1000.0f, 1000.0f));
-	joint->setDrivePosition(0);
+	//joint->setDrivePosition(-PxTwoPi * radius * 0.25F);
 	joint->setDriveVelocity(5.0f);
 	PX_UNUSED(joint);
 
