@@ -425,20 +425,16 @@ public:
 	{
         const physx::curve* path;
         physx::PxD6JointDrive drive_settings;
-        float drive_position;
+        float drive_relative_position;
         float drive_velocity;
-        float zero_position;
-        float position;
 		physx::PxJointLinearLimitPair limit;
 		physx::PxPathJointFlags joint_flags;
 
 		PathJointData(const physx::curve* path, const physx::PxJointLinearLimitPair& pair)
         : path(path),
           drive_settings(),
-          drive_position(0),
+          drive_relative_position(0),
           drive_velocity(0),
-          zero_position(0),
-          position(0),
           limit(pair),
           joint_flags(0)
         {
@@ -449,17 +445,26 @@ public:
 	static const physx::PxU32 TYPE_ID = physx::PxConcreteType::eFIRST_USER_EXTENSION;
 
 	PulleyJoint(physx::PxPhysics& physics, const physx::curve* path,
-				physx::PxRigidBody& body0, const physx::PxTransform& localFrame0,
-			    physx::PxRigidBody& body1, const physx::PxTransform& localFrame1);
+				physx::PxRigidBody* body0, const physx::PxTransform& localFrame0,
+			    physx::PxRigidBody* body1, const physx::PxTransform& localFrame1);
 
 	void release();
 
-    void            setFlags(physx::PxPathJointFlags flags) { m_data.joint_flags = flags; }
-    void            setLimit(float lower, float upper) { m_data.limit.lower = physx::PxReal(lower); m_data.limit.upper = physx::PxReal(upper); }
-    void            setDrivePosition(float position) { m_data.drive_position = position; }
-    void            setDriveVelocity(float velocity) { m_data.drive_velocity = velocity; }
-    void            setDriveSettings(const physx::PxD6JointDrive& settings) { m_data.drive_settings = settings; }
-    float           getCurrentPosition() { return m_data.position + m_data.zero_position; }
+    void            setFlags(physx::PxPathJointFlags flags) { m_data.joint_flags = flags; m_constraint->markDirty(); }
+    void            setLimit(float lower, float upper) { m_data.limit.lower = physx::PxReal(lower); m_data.limit.upper = physx::PxReal(upper); m_constraint->markDirty(); }
+    void            setDriveRelativePosition(float relative_position) { m_data.drive_relative_position = relative_position; m_constraint->markDirty(); }
+    void            setDriveVelocity(float velocity) { m_data.drive_velocity = velocity; m_constraint->markDirty(); }
+    void            setDriveSettings(const physx::PxD6JointDrive& settings) { m_data.drive_settings = settings; m_constraint->markDirty(); }
+    float           getCurrentPosition()
+    {
+        const physx::PxRigidBody* body0 = m_bodies[1];
+        const physx::PxRigidBody* body1 = m_bodies[0];
+        const physx::PxVec3 world_anchor = (body0 != nullptr) ? body0->getGlobalPose().transform(m_local_poses[1].p) : m_local_poses[1].p;
+        const physx::PxVec3 local_anchor = (body1 != nullptr) ? body1->getGlobalPose().transformInv(world_anchor) : world_anchor;
+        return m_data.path->projected_length(local_anchor);
+    }
+
+    physx::PxConstraint* getConstraint() { return m_constraint; }
 
 	void*			prepareData();
 	void			onConstraintRelease();

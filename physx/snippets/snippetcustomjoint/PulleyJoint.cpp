@@ -45,26 +45,20 @@ static PxU32 solverPrep(Px1DConstraint* constraints,
 {		
 	PX_UNUSED(maxConstraints);
 
-	PulleyJoint::PathJointData& data = *const_cast<PulleyJoint::PathJointData*>(reinterpret_cast<const PulleyJoint::PathJointData*>(constantBlock));
+	const PulleyJoint::PathJointData& data = *reinterpret_cast<const PulleyJoint::PathJointData*>(constantBlock);
 	const curve* path = data.path;
-	const bool closed = path->closed();
 
 	PxTransform32 cA2w, cB2w;
 	physx::Ext::joint::ConstraintHelper ch(constraints, invMassScale, cA2w, cB2w, body0WorldOffset, data, bA2w, bB2w);
 
 	physx::Ext::joint::applyNeighborhoodOperator(cA2w, cB2w);
 
-	PxVec3 local_anchor_b = bA2w.transformInv(cB2w.p);
-	float s = path->projected_length(local_anchor_b);	
-	if (closed)
-	{
-		s = path->normalize(data.position, s);
-	}
-
-	data.position = s;
+	const float s = path->projected_length(bA2w.transformInv(cB2w.p));
 	path->frame(s, cA2w);
 	cA2w = bA2w.transform(cA2w);
 
+	/*
+	const bool closed = path->closed();
 	bool limitEnabled = data.joint_flags & PxPathJointFlag::eLIMIT_ENABLED;
 	const PxJointLinearLimitPair& limit = data.limit;
 	float upper = limit.upper + data.zero_position; // Map limits to the interval [0, L]
@@ -86,6 +80,9 @@ static PxU32 solverPrep(Px1DConstraint* constraints,
 	}
 
 	const bool limitIsLocked = limitEnabled && lower >= upper;
+	*/
+
+	const bool limitIsLocked = false;
 
 	const PxVec3 bOriginInA = cA2w.transformInv(cB2w.p);
 
@@ -98,15 +95,16 @@ static PxU32 solverPrep(Px1DConstraint* constraints,
 
 	if ((data.joint_flags & PxPathJointFlag::eDRIVE_ENABLED) == PxPathJointFlag::eDRIVE_ENABLED)
 	{
-		const float drive_position_error = (data.drive_position + data.zero_position) - s;
-		ch.linear(axis, -data.drive_velocity, drive_position_error, data.drive_settings);
+		ch.linear(axis, -data.drive_velocity, data.drive_relative_position, data.drive_settings);
 	}
 
+	/*
 	if (limitEnabled && !limitIsLocked)
 	{
 		ch.linearLimit(axis, s, upper, limit);
 		ch.linearLimit(-axis, -s, -lower, limit);
 	}
+	*/
 
 	return ch.getCount();
 }
@@ -130,28 +128,25 @@ static PxConstraintShaderTable sShaderTable = { solverPrep, visualize, PxConstra
 
 PxConstraintSolverPrep PulleyJoint::getPrep() const { return solverPrep; }
 
-PulleyJoint::PulleyJoint(PxPhysics& physics, const physx::curve* path, PxRigidBody& body0, const PxTransform& localFrame0, PxRigidBody& body1, const PxTransform& localFrame1)
+PulleyJoint::PulleyJoint(PxPhysics& physics, const physx::curve* path, PxRigidBody* body0, const PxTransform& localFrame0, PxRigidBody* body1, const PxTransform& localFrame1)
 : m_data(path, PxJointLinearLimitPair(PxTolerancesScale()))
 {
-	m_constraint = physics.createConstraint(&body0, &body1, *this, sShaderTable, sizeof(PathJointData));
+	m_constraint = physics.createConstraint(body1, body0, *this, sShaderTable, sizeof(PathJointData));
 
-	m_bodies[0] = &body0;
-	m_bodies[1] = &body1;
+	m_bodies[0] = body1;
+	m_bodies[1] = body0;
 
 	// keep these around in case the CoM gets relocated
-	m_local_poses[0] = localFrame0.getNormalized();
-	m_local_poses[1] = localFrame1.getNormalized();
+	m_local_poses[0] = localFrame1.getNormalized();
+	m_local_poses[1] = localFrame0.getNormalized();
 
 	// the data which will be fed to the joint solver and projection shaders
-	const PxVec3 world_anchor = body1.getGlobalPose().transform(localFrame1.p);
-	const PxVec3 local_anchor = body0.getGlobalPose().transformInv(world_anchor);
-	m_data.zero_position = path->projected_length(local_anchor);
 	m_data.invMassScale.linear0 = 1.0f;
 	m_data.invMassScale.angular0 = 1.0f;
 	m_data.invMassScale.linear1 = 1.0f;
 	m_data.invMassScale.angular1 = 1.0f;
-	m_data.c2b[0] = body0.getCMassLocalPose().transformInv(m_local_poses[0]);
-	m_data.c2b[1] = body1.getCMassLocalPose().transformInv(m_local_poses[1]);
+	m_data.c2b[0] = (body1 != nullptr) ? body1->getCMassLocalPose().transformInv(m_local_poses[0]) : m_local_poses[0];
+	m_data.c2b[1] = (body0 != nullptr) ? body0->getCMassLocalPose().transformInv(m_local_poses[1]) : m_local_poses[1];
 }
 
 void PulleyJoint::release()

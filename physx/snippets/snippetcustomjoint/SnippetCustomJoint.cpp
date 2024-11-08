@@ -32,6 +32,7 @@
 // ****************************************************************************
 
 #include <ctype.h>
+#include <iostream>
 #include "PxPhysicsAPI.h"
 #include "../snippetcommon/SnippetPrint.h"
 #include "../snippetcommon/SnippetPVD.h"
@@ -48,6 +49,7 @@ static PxDefaultCpuDispatcher*	gDispatcher = NULL;
 static PxScene*					gScene		= NULL;
 static PxMaterial*				gMaterial	= NULL;
 static PxPvd*					gPvd        = NULL;
+static PulleyJoint*             gJoint      = NULL;
 
 void initPhysics(bool /*interactive*/)
 {
@@ -83,12 +85,12 @@ void initPhysics(bool /*interactive*/)
 
 	PxBoxGeometry boxGeom(1.0f, 1.0f, 1.0f);
 
-	PxTransform t0(PxVec3(-2, 10, 0), PxQuat(0.0f, 0.0f, -0.130526f, 0.991444f));
-	PxTransform t1(PxVec3(2, 10, 0), PxQuat(0.0f, 0.0f, 0.258819f, 0.9659258f));
-	PxRigidDynamic* box0 = PxCreateDynamic(*gPhysics, t0, boxGeom, *gMaterial, 100.0f);
-	PxRigidDynamic* box1 = PxCreateDynamic(*gPhysics, t1, boxGeom, *gMaterial, 1.0f);
+	PxTransform t1(PxVec3(-2, 10, 0), PxQuat(0.0f, 0.0f, 0.0f, 1.0f));
+	PxTransform t0(PxVec3(2, 10, 0), PxQuat(0.0f, 0.0f, 0.0f, 1.0f));
+	PxRigidDynamic* box0 = PxCreateDynamic(*gPhysics, t0, boxGeom, *gMaterial, 1.0f); // Attachment
+	PxRigidDynamic* box1 = PxCreateDynamic(*gPhysics, t1, boxGeom, *gMaterial, 100.0f); // Base
 
-	box0->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
+	box1->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
 
 	//physx::PxPrismaticJointCreate(*gPhysics, box0, PxTransform(PxIdentity), NULL, t0);
 
@@ -98,13 +100,12 @@ void initPhysics(bool /*interactive*/)
 
 	//const line* path = new line(PxVec3(0.0F, 0.0F, 0.0F), PxVec3(1.0F, 0.0, 0.0F), PxVec3(0.0F, 1.0F, 0.0F), 20.0F);
 
-	PulleyJoint* joint = new PulleyJoint(*gPhysics, path, *box0, PxTransform(PxIdentity), *box1, PxTransform(PxVec3(0.0f, 0.5f, 0.0f)));
-	joint->setFlags(PxPathJointFlag::eTANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eNORMAL_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eBITANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eDRIVE_ENABLED | PxPathJointFlag::eLIMIT_ENABLED);
-	joint->setLimit(0.0F, PxTwoPi * radius * 1.0F);
-	joint->setDriveSettings(PxD6JointDrive(0.0f, 10000.0f, 1000.0f));
-	//joint->setDrivePosition(-PxTwoPi * radius * 0.25F);
-	joint->setDriveVelocity(10.0f);
-	PX_UNUSED(joint);
+	gJoint = new PulleyJoint(*gPhysics, path, box0, PxTransform(PxVec3(0.0f, 0.0f, 0.0f)), box1, PxTransform(PxIdentity));
+	gJoint->setFlags(PxPathJointFlag::eTANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eNORMAL_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eBITANGENT_ANGLE_CONSTRAINT_ENABLED | PxPathJointFlag::eDRIVE_ENABLED | PxPathJointFlag::eLIMIT_ENABLED);
+	//gJoint->setLimit(PxTwoPi * radius * -2.0F, PxTwoPi * radius);
+	gJoint->setDriveSettings(PxD6JointDrive(100000.0f, 0.0f, 1000.0f));
+	gJoint->setDriveRelativePosition(0.1);
+	//gJoint->setDriveVelocity(10.0f);
 
 	gScene->addActor(*box0);
 	gScene->addActor(*box1);
@@ -114,6 +115,11 @@ void stepPhysics(bool /*interactive*/)
 {
 	gScene->simulate(1.0f/100.0f);
 	gScene->fetchResults(true);
+
+	physx::PxConstraint* constraint = gJoint->getConstraint();
+	PX_UNUSED(constraint);
+
+	std::cout << gJoint->getCurrentPosition() << std::endl;
 }
 	
 void cleanupPhysics(bool /*interactive*/)
