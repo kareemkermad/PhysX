@@ -418,7 +418,16 @@ namespace physx
 
 }
 
-class PulleyJoint : public physx::PxConstraintConnector
+struct PxCustomJointConcreteType
+{
+    enum Enum
+    {
+        ePATH = physx::PxConcreteType::eFIRST_USER_EXTENSION,
+        eLast
+    };
+};
+
+class PulleyJoint : public physx::PxJoint, public physx::PxConstraintConnector
 {
 public:
     struct PathJointData : physx::Ext::JointData
@@ -450,43 +459,58 @@ public:
 
 	void release();
 
-    void            setFlags(physx::PxPathJointFlags flags) { m_data.joint_flags = flags; m_constraint->markDirty(); }
-    void            setLimit(float lower, float upper) { m_data.limit.lower = physx::PxReal(lower); m_data.limit.upper = physx::PxReal(upper); m_constraint->markDirty(); }
-    void            setDriveRelativePosition(float relative_position) { m_data.drive_relative_position = relative_position; m_constraint->markDirty(); }
-    void            setDriveVelocity(float velocity) { m_data.drive_velocity = velocity; m_constraint->markDirty(); }
-    void            setDriveSettings(const physx::PxD6JointDrive& settings) { m_data.drive_settings = settings; m_constraint->markDirty(); }
-    float           getCurrentPosition()
-    {
-        const physx::PxRigidBody* body0 = m_bodies[1];
-        const physx::PxRigidBody* body1 = m_bodies[0];
-        const physx::PxVec3 world_anchor = (body0 != nullptr) ? body0->getGlobalPose().transform(m_local_poses[1].p) : m_local_poses[1].p;
-        const physx::PxVec3 local_anchor = (body1 != nullptr) ? body1->getGlobalPose().transformInv(world_anchor) : world_anchor;
-        return m_data.path->projected_length(local_anchor);
-    }
+    void setFlags(physx::PxPathJointFlags flags);
+    void setLimit(float lower, float upper);
+    void setDriveRelativePosition(float relative_position);
+    void setDriveVelocity(float velocity);
+    void setDriveSettings(const physx::PxD6JointDrive& settings);
+    float getCurrentPosition();
 
-    physx::PxConstraint* getConstraint() { return m_constraint; }
+    const char* getConcreteTypeName() const override;
+    physx::PxScene* getScene() const override;
+    physx::PxConstraint* getConstraint() const override;
+    physx::PxConstraintFlags getConstraintFlags() const override;
+    void setConstraintFlags(physx::PxConstraintFlags flags) override;
+    void setConstraintFlag(physx::PxConstraintFlag::Enum flag, bool value) override;
+    const char* getName() const override;
+    void setName(const char* name) override;
+    physx::PxTransform	getLocalPose(physx::PxJointActorIndex::Enum actor) const override;
+    void setLocalPose(physx::PxJointActorIndex::Enum actor, const physx::PxTransform& localPose) override;
+    void setActors(physx::PxRigidActor* actor0, physx::PxRigidActor* actor1) override;
+    void getActors(physx::PxRigidActor*& actor0, physx::PxRigidActor*& actor1) const override;
+    physx::PxTransform	getRelativeTransform() const override;
+    physx::PxVec3 getRelativeLinearVelocity() const override;
+    physx::PxVec3 getRelativeAngularVelocity()	const override;
+    void getBreakForce(physx::PxReal& force, physx::PxReal& torque) const override;
+    void setBreakForce(physx::PxReal force, physx::PxReal torque) override;
+    void setInvMassScale0(physx::PxReal invMassScale) override;
+    physx::PxReal getInvMassScale0() const override;
+    void setInvInertiaScale0(physx::PxReal invInertiaScale) override;
+    physx::PxReal getInvInertiaScale0() const override;
+    void setInvMassScale1(physx::PxReal invMassScale) override;
+    physx::PxReal getInvMassScale1() const override;
+    void setInvInertiaScale1(physx::PxReal invInertiaScale) override;
+    physx::PxReal getInvInertiaScale1() const override;
 
-	void*			prepareData();
-	void			onConstraintRelease();
-	void			onComShift(physx::PxU32 actor);
-	void			onOriginShift(const physx::PxVec3& shift);
-	void*			getExternalReference(physx::PxU32& typeID);
+	void* prepareData();
+	void onConstraintRelease();
+	void onComShift(physx::PxU32 actor);
+	void onOriginShift(const physx::PxVec3& shift);
+	void* getExternalReference(physx::PxU32& typeID);
 
-	bool			updatePvdProperties(physx::pvdsdk::PvdDataStream&,
-										const physx::PxConstraint*,
-										physx::PxPvdUpdateType::Enum) const { return true; }
-	void			updateOmniPvdProperties() const { }
-	physx::PxBase*	getSerializable() { return NULL; }
+	bool updatePvdProperties(physx::pvdsdk::PvdDataStream&, const physx::PxConstraint*, physx::PxPvdUpdateType::Enum) const { return true; }
+	void updateOmniPvdProperties() const { }
+	physx::PxBase* getSerializable() { return NULL; }
 
 	virtual physx::PxConstraintSolverPrep getPrep() const;
 
 	virtual const void* getConstantBlock() const { return &m_data; }
 
-	physx::PxRigidBody*		m_bodies[2];
-	physx::PxTransform		m_local_poses[2];
+	physx::PxRigidBody*	m_bodies[2];
+	physx::PxTransform m_local_poses[2];
 
-	physx::PxConstraint*	m_constraint;
-	PathJointData			m_data;
+	physx::PxConstraint* m_constraint;
+	PathJointData m_data;
 
 	~PulleyJoint() {}
 };
